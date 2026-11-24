@@ -1166,15 +1166,37 @@ roc_utils_stop_if_no_ml <- function(roc, auc = roc$auc) {
 }
 
 # CI of an AUC with standard error sd, as (lower, AUC, upper): a normal
-# interval on the logit scale, which stays within (0, 1) (Pepe 2003, p. 107)
-roc_utils_logit_ci <- function(auc, sd, conf.level) {
+# interval on the logit scale, which stays within (0, 1) (Pepe 2003, p. 107).
+# A one-sided interval extends to 0 or 1.
+roc_utils_logit_ci <- function(auc, sd, conf.level, alternative) {
   # sd == 0 (AUC of 0 or 1, or all values tied): no interval; the logit interval would be NaN.
-  # conf.level == 0: no interval either, and plogis(qlogis(auc)) can be 1 ulp off auc
-  if (sd == 0 || conf.level == 0) {
-    return(rep(auc, 3))
+  # conf.level == 0: no two-sided interval either, and plogis(qlogis(auc)) can be 1 ulp off auc
+  if (sd == 0 || (conf.level == 0 && alternative == "two.sided")) {
+    half <- 0
+  } else {
+    half <- qnorm(1 - roc_utils_ci_tail(conf.level, alternative)) * sd / (auc * (1 - auc))
   }
-  half <- qnorm(1 - (1 - conf.level) / 2) * sd / (auc * (1 - auc))
-  c(plogis(qlogis(auc) - half), auc, plogis(qlogis(auc) + half))
+  c(
+    if (alternative == "less") 0 else if (half == 0) auc else plogis(qlogis(auc) - half),
+    auc,
+    if (alternative == "greater") 1 else if (half == 0) auc else plogis(qlogis(auc) + half)
+  )
+}
+
+# Probability left out on each bounded side of a CI
+roc_utils_ci_tail <- function(conf.level, alternative) {
+  if (alternative == "two.sided") (1 - conf.level) / 2 else 1 - conf.level
+}
+
+# Range of the values an AUC can take, in fraction: the limits of a one-sided CI
+roc_utils_auc_range <- function(auc) {
+  partial.auc <- attr(auc, "partial.auc")
+  range <- c(0, roc_utils_max_partial_auc(partial.auc, FALSE))
+  if (isTRUE(attr(auc, "partial.auc.correct"))) {
+    min <- roc_utils_min_partial_auc(partial.auc, FALSE)
+    range <- (1 + (range - min) / (range[2] - min)) / 2 # McClish, as in auc()
+  }
+  range
 }
 
 # Validates a list of curves for roc.test.list and cov.list. Returns:

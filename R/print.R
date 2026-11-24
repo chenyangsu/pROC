@@ -191,7 +191,9 @@ print.mv.multiclass.auc <- print.multiclass.auc
 
 print.ci.auc <- function(x, digits = max(3, getOption("digits") - 3), ...) {
   signif.ci <- signif(x, digits = digits)
-  cat(attr(x, "conf.level") * 100, "% CI: ", sep = "")
+  # A ci.auc of pROC < 1.20 has no alternative
+  one.sided <- !is.null(attr(x, "alternative")) && attr(x, "alternative") != "two.sided"
+  cat(attr(x, "conf.level") * 100, "% ", if (one.sided) "one-sided ", "CI: ", sep = "")
   cat(signif.ci[1], ifelse(attr(attr(x, "auc"), "percent"), "%", ""), "-", signif.ci[3], ifelse(attr(attr(x, "auc"), "percent"), "%", ""), sep = "")
   if (attr(x, "method") == "delong") {
     cat(" (DeLong)\n", sep = "")

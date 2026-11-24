@@ -572,7 +572,7 @@ bootstrap.list.replicate <- function(n, rocs, smoothing.args, paired, stratified
 
 ##########  AUC of one ROC curve (ci.auc)  ##########
 
-ci_auc_bootstrap <- function(roc, conf.level, boot.n, boot.stratified, progress = FALSE,
+ci_auc_bootstrap <- function(roc, conf.level, alternative, boot.n, boot.stratified, progress = FALSE,
                              cl = NULL, ...) {
   aucs <- roc_utils_drop_na_replicates(
     bootstrap.replicates(boot.n, bootstrap.replicate,
@@ -581,8 +581,23 @@ ci_auc_bootstrap <- function(roc, conf.level, boot.n, boot.stratified, progress 
       FUN.VALUE = NA_real_, progress = progress, cl = cl
     )
   )
+  ci_auc_quantile(aucs, conf.level, alternative, roc$auc)
+}
+
+# Percentile CI of the bootstrapped aucs, with their median. A one-sided
+# interval extends to the limit of the range of the auc, as in binom.test.
+ci_auc_quantile <- function(aucs, conf.level, alternative, auc) {
   # TODO: Maybe apply a correction (it's in the Tibshirani?) What do Carpenter-Bithell say about that?
-  quantile(aucs, c(0 + (1 - conf.level) / 2, .5, 1 - (1 - conf.level) / 2))
+  tail <- roc_utils_ci_tail(conf.level, alternative)
+  ci <- quantile(aucs, c(if (alternative == "less") 0 else tail, .5, if (alternative == "greater") 1 else 1 - tail))
+  range <- roc_utils_auc_range(auc)
+  # Without any replicate there is no interval: all NA
+  if (alternative == "less" && !anyNA(ci)) {
+    ci[1] <- range[1]
+  } else if (alternative == "greater" && !anyNA(ci)) {
+    ci[3] <- range[2]
+  }
+  ci
 }
 
 # "best" can match several points; the policy decides which one the replicate

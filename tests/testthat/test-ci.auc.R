@@ -36,6 +36,58 @@ test_that("ci.auc with delong of a perfect curve is a null interval", {
 })
 
 
+test_that("ci.auc is one-sided with alternative", {
+  # The bound of a one-sided 95% CI is that of the two-sided 90% CI
+  two.sided <- as.numeric(ci.auc(r.ndka, conf.level = 0.9))
+  greater <- ci.auc(r.ndka, alternative = "greater")
+  expect_equal(as.numeric(greater), c(two.sided[1:2], 1))
+  expect_identical(attr(greater, "alternative"), "greater")
+  expect_identical(attr(greater, "conf.level"), 0.95)
+  expect_equal(as.numeric(ci.auc(r.ndka, alternative = "less")), c(0, two.sided[2:3]))
+  expect_identical(attr(ci.auc(r.ndka), "alternative"), "two.sided")
+  # Partial matching, as in roc.test
+  expect_identical(ci.auc(r.ndka, alt = "g"), greater)
+  expect_output(print(greater), "95% one-sided CI: 0.5161-1 (DeLong)", fixed = TRUE)
+  # percent, auc and ci entry points, smoothed curves (ml)
+  expect_equal(as.numeric(ci.auc(r.ndka.percent, alternative = "greater")), c(two.sided[1:2], 1) * 100)
+  expect_equal(as.numeric(ci(auc(r.ndka), alternative = "less")), c(0, two.sided[2:3]))
+  s <- smooth(r.ndka)
+  expect_equal(as.numeric(ci.auc(s, alternative = "greater")), c(as.numeric(ci.auc(s, conf.level = 0.9))[1:2], 1))
+  # A null variance leaves no interval on the bounded side
+  r <- roc(c(0, 0, 1, 1), c(1, 1, 1, 1), levels = c(0, 1), direction = "<")
+  expect_identical(as.numeric(ci.auc(r, alternative = "greater")), c(0.5, 0.5, 1))
+  expect_identical(as.numeric(ci.auc(r, alternative = "less")), c(0, 0.5, 0.5))
+  # The formula method and roc(ci = TRUE)
+  expect_identical(ci.auc(outcome ~ ndka, data = aSAH, alternative = "greater", quiet = TRUE)[1:3], greater[1:3])
+  expect_identical(roc(aSAH$outcome, aSAH$ndka, ci = TRUE, alternative = "greater", quiet = TRUE)$ci[1:3], greater[1:3])
+  expect_error(ci.auc(r.ndka, alternative = "one.sided"))
+})
+
+test_that("ci.auc with bootstrap is one-sided with alternative", {
+  boot.ci <- function(roc, ...) {
+    set.seed(42) # the same replicates for each side
+    ci.auc(roc, method = "bootstrap", boot.n = 20, ...)
+  }
+  two.sided <- as.numeric(boot.ci(r.ndka, conf.level = 0.9))
+  greater <- boot.ci(r.ndka, alternative = "greater")
+  expect_equal(as.numeric(greater), c(two.sided[1:2], 1))
+  expect_named(greater, c("5%", "50%", "100%"))
+  # No replicate: no interval
+  expect_true(all(is.na(pROC:::ci_auc_quantile(numeric(0), 0.95, "greater", r.ndka$auc))))
+  expect_equal(as.numeric(boot.ci(r.ndka, alternative = "less")), c(0, two.sided[2:3]))
+  # The other bound is the limit of the partial AUC, corrected or not
+  two.sided <- as.numeric(boot.ci(r.s100b.partial1, conf.level = 0.9))
+  expect_equal(as.numeric(boot.ci(r.s100b.partial1, alternative = "greater")), c(two.sided[1:2], 0.09))
+  expect_equal(as.numeric(boot.ci(r.s100b.partial1, alternative = "less")), c(0, two.sided[2:3]))
+  pauc <- auc(r.s100b, partial.auc = c(1, 0.9), partial.auc.correct = TRUE)
+  expect_equal(boot.ci(pauc, alternative = "greater")[[3]], 1)
+  expect_equal(boot.ci(pauc, alternative = "less")[[1]], (1 - 0.005 / 0.095) / 2)
+  # percent, smoothed curves
+  expect_equal(boot.ci(r.s100b.percent.partial1, alternative = "greater")[[3]], 9)
+  s <- smooth(r.ndka, method = "density")
+  expect_equal(as.numeric(boot.ci(s, alternative = "less")), c(0, as.numeric(boot.ci(s, conf.level = 0.9))[2:3]))
+})
+
 test_that("ci.auc with delong and percent works", {
   expect_equal(as.numeric(ci.auc(r.ndka.percent)), expected.ci.auc * 100)
 })
